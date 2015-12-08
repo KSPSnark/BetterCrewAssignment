@@ -1,0 +1,648 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using UnityEngine;
+
+namespace BetterCrewAssignment
+{
+    [KSPAddon(KSPAddon.Startup.EditorAny, false)]
+    public class EditorBehaviour : MonoBehaviour
+    {
+        private static readonly string PILOT_PROFESSION = "Pilot";
+        private static readonly string ENGINEER_PROFESSION = "Engineer";
+        private static readonly string SCIENTIST_PROFESSION = "Scientist";
+
+        public void Start()
+        {
+            Log("Start");
+            GameEvents.onEditorLoad.Add(OnShipLoaded);
+            GameEvents.onEditorShipModified.Add(OnShipModified);
+            GameEvents.onEditorScreenChange.Add(OnEditorScreenChange);
+        }
+
+        /// <summary>
+        /// Here when a ship is loaded in the editor.
+        /// </summary>
+        /// <param name="construct"></param>
+        /// <param name="loadType"></param>
+        private void OnShipLoaded(ShipConstruct construct, CraftBrowser.LoadType loadType)
+        {
+            Log("Ship loaded, " + construct.Count + " parts");
+            LogPreferredAssignments(construct);
+            AssignKerbals(construct);
+            LogVesselManifest();
+        }
+
+        /// <summary>
+        /// Here when the ship is modified.
+        /// </summary>
+        /// <param name="construct"></param>
+        private void OnShipModified(ShipConstruct construct)
+        {
+            //LogShip("Modified", construct);
+            Log("Ship modified, " + construct.Count + " parts");
+        }
+
+        /// <summary>
+        /// Here when the editor screen changes.
+        /// </summary>
+        /// <param name="screen"></param>
+        private void OnEditorScreenChange(EditorScreen screen)
+        {
+            Log("Switched editor screen: " + screen);
+            LogVesselManifest();
+        }
+
+        private void LogShip(String verb, ShipConstruct construct)
+        {
+            int totalCrewCapacity = 0;
+            Log(verb + " ship '" + construct.shipName + "' with " + construct.parts.Count + " parts");
+            List<ProtoCrewMember> crew = new List<ProtoCrewMember>();
+            foreach (Part part in construct.parts)
+            {
+                if (part.CrewCapacity < 1)
+                {
+                    continue;
+                }
+                totalCrewCapacity += part.CrewCapacity;
+                crew.AddRange(part.protoModuleCrew);
+            }
+            StringBuilder builder = new StringBuilder("Crew capacity ").Append(totalCrewCapacity).Append(":");
+            foreach (ProtoCrewMember crewMember in crew)
+            {
+                builder.Append(" ").Append(Logging.ToString(crewMember));
+            }
+            Log(builder.ToString());
+            LogVesselManifest();
+        }
+
+        /// <summary>
+        /// Record all preferred crew assignments for the ship.
+        /// </summary>
+        /// <param name="construct"></param>
+        private void LogPreferredAssignments(ShipConstruct construct)
+        {
+            foreach (Part part in construct.Parts)
+            {
+                CrewAssignment[] assignments = CrewAssignment.GetAssignments(part);
+                for (int index = 0; index < assignments.Length; ++index)
+                {
+                    String message = part.partInfo.name + " slot " + index + ": ";
+                    CrewAssignment assignment = assignments[index];
+                    if (assignment == null)
+                    {
+                        message += "unassigned";
+                    }
+                    else
+                    {
+                        message += "assign " + assignment;
+                    }
+                    Log(message);
+                } // for each crew slot on the part
+                foreach (ModuleCrewRequirement requirement in ModuleCrewRequirement.CrewRequirementsOf(part))
+                {
+                    Log(Logging.ToString(part) + ": require " + requirement);
+                }
+            } // for each part on the ship
+        }
+
+        /// <summary>
+        /// Here when we need to make a pass through the ship and assign kerbals everywhere.
+        /// </summary>
+        /// <param name="construct"></param>
+        private void AssignKerbals(ShipConstruct construct)
+        {
+            // Find what we need to crew
+            CrewableList crewables;
+            try {
+                crewables = new CrewableList(construct);
+            } catch (Exception e)
+            {
+                Logging.Error("Can't assign kerbals: " + e.Message);
+                return;
+            }
+            if (crewables.Count == 0) return; // there's nothing to crew
+
+            // Clear out any prior assignments
+            crewables.ClearAssignments();
+
+            // Fill out all command module slots that specify a kerbal by name. This takes
+            // priority over everything else, since these represent conscious choice by the player.
+            AssignKerbalsByName(crewables.CrewablesWhich(c => c.IsCommand), crewables);
+
+            // Make sure we have SAS (assign a pilot if necessary).
+            int sasLevel = TryEnsureSAS(construct, crewables);
+
+            // Fill out all command module slots that specify a kerbal by profession.
+            AssignKerbalsByProfession(crewables.CrewablesWhich(c => c.IsCommand), crewables, sasLevel);
+
+            // Fill all remaining slots that specify a kerbal by name.
+            AssignKerbalsByName(crewables.Crewables, crewables);
+
+            // Fill all remaining slots that specify a kerbal by profession.
+            AssignKerbalsByProfession(
+                crewables.Crewables,
+                crewables,
+                int.MaxValue); // pretend like we have infinite SAS so it will pick low-level pilots
+
+            // Add any crew that we need to fulfill requirements of various parts.
+            FulfillPartRequirements(crewables, construct);
+
+            // Fill all remaining command slots that want a warm body
+            AssignAnyKerbals(crewables.CrewablesWhich(c => c.IsCommand), crewables);
+
+            // And everything else
+            AssignAnyKerbals(crewables.Crewables, crewables);
+
+            // Count 'em up
+            int slotCount = 0;
+            int assignedCount = 0;
+            foreach (Crewable crewable in crewables.Crewables)
+            {
+                foreach (CrewSlot slot in crewable.Slots)
+                {
+                    ++slotCount;
+                    if (!slot.IsEmpty) ++assignedCount;
+                }
+            }
+            int emptySlots = slotCount - assignedCount;
+            Logging.Log("Crew assignment complete. Assigned " + assignedCount + " kerbals, left " + emptySlots + " slots empty.");
+        }
+
+        /// <summary>
+        /// Go through and attempt to assign kerbals that are requested by name for specific slots.
+        /// </summary>
+        /// <param name="crewables"></param>
+        private static void AssignKerbalsByName(IEnumerable<Crewable> crewables, CrewableList alreadyAssigned)
+        {
+            foreach (Crewable crewable in crewables)
+            {
+                foreach (CrewSlot slot in crewable.Slots)
+                {
+                    if (slot.Assignment == null) continue; // no assignment for this slot
+                    if (!slot.Assignment.Name.IsPresent) continue; // no name specified
+                    if (!slot.IsEmpty) continue; // there's already someone there
+
+                    string kerbalName = slot.Assignment.Name.Value;
+                    ProtoCrewMember crew = AssignableKerbalByName(kerbalName, alreadyAssigned);
+                    string message = crewable.ToString() + " slot " + slot.Index + ": ";
+                    if ((crew != null) && !Crewable.IsAssigned(crewables, crew))
+                    {
+                        slot.Occupant = crew;
+                        message += "Assigned " + Logging.ToString(crew);
+                    }
+                    else
+                    {
+                        message += "Can't assign " + Logging.ToString(crew) + ", skipping";
+                    }
+                    Log(message);
+                }
+            }
+        }
+
+        /// <summary>
+        /// If the ship has no probe cores with SAS, try to make sure that there's at least one pilot.
+        /// Returns the available SAS level (-1 if no SAS present).
+        /// </summary>
+        /// <param name="construct"></param>
+        /// <param name="crewables"></param>
+        private static int TryEnsureSAS(ShipConstruct construct, CrewableList crewables)
+        {
+            // Do we have SAS?
+            int sasLevel = GetHighestSASLevel(construct);
+
+            // get the highest-level pilot
+            ProtoCrewMember highestPilot = GetHighestAssignedLevel(crewables.CrewablesWhich(c => c.IsCommand), PILOT_PROFESSION);
+            int pilotLevel = (highestPilot == null) ? -1 : highestPilot.experienceLevel;
+
+            int maxSas = (sasLevel > pilotLevel) ? sasLevel : pilotLevel;
+            if (maxSas >= 0)
+            {
+                // we already have SAS on the ship, don't need to add a pilot
+                if ((sasLevel < 0) && (pilotLevel > sasLevel))
+                {
+                    Logging.Log(Logging.ToString(highestPilot) + " is already assigned and will provide SAS");
+                }
+                return maxSas;
+            }
+
+            // There's no SAS control, we need to add a pilot somewhere.
+
+            // Try to find a slot to put a pilot
+            CrewSlot pilotSlot = Crewable.FindFirstSlotWhich(crewables.CrewablesWhich(c => c.IsCommand), s => s.IsEmpty);
+            if (pilotSlot == null)
+            {
+                Logging.Warn("SAS will be unavailable (no probe cores, no open slots to add a pilot)");
+                return maxSas;
+            }
+
+            // Try to find a pilot to assign.
+            ProtoCrewMember lowestPilot;
+            if (!FindHighestLowestAvailable(PILOT_PROFESSION, crewables, out highestPilot, out lowestPilot))
+            {
+                Logging.Warn("SAS will be unavailable (no probe cores, no available pilots)");
+                return maxSas;
+            }
+
+            Logging.Log("Assigning " + Logging.ToString(highestPilot) + " to provide SAS");
+            pilotSlot.Occupant = highestPilot;
+            return highestPilot.experienceLevel;
+        }
+
+        /// <summary>
+        /// Go through and attempt to fill empty slots that have requested a particular profession.
+        /// </summary>
+        /// <param name="crewables"></param>
+        private static void AssignKerbalsByProfession(IEnumerable<Crewable> crewables, CrewableList alreadyAssigned, int sasLevel)
+        {
+            foreach (Crewable crewable in crewables)
+            {
+                foreach (CrewSlot slot in crewable.Slots)
+                {
+                    if (slot.Assignment == null) continue; // no assignment for this slot, nothing to do
+                    if (!slot.IsEmpty) continue; // already filled
+                    if (!slot.Assignment.Profession.IsPresent) continue; // don't care about profession
+                    string profession = slot.Assignment.Profession.Value; // this is what we want to assign
+
+                    // are there any candidates available?
+                    ProtoCrewMember highestCandidate;
+                    ProtoCrewMember lowestCandidate;
+                    if (!FindHighestLowestAvailable(profession, alreadyAssigned, out highestCandidate, out lowestCandidate))
+                    {
+                        // no available kerbals, move on to the next slot
+                        continue;
+                    }
+                    ProtoCrewMember useCandidate;
+                    if (PILOT_PROFESSION.Equals(profession))
+                    {
+                        // For pilots, we want either the highest one whose level exceeds SAS, or else
+                        // the lowest one.
+                        useCandidate = (highestCandidate.experienceLevel > sasLevel) ? highestCandidate : lowestCandidate;
+                    }
+                    else
+                    {
+                        // For all other professions, we want the highest one.
+                        useCandidate = highestCandidate;
+                    }
+                    Logging.Log(crewable.ToString() + " slot " + slot.Index + ": Assigned " + profession.ToLower() + " " + Logging.ToString(useCandidate));
+                    slot.Occupant = useCandidate;
+                }
+            }
+        }
+
+        /// <summary>
+        /// As needed, assign additional crew members to fulfill part requirements.
+        /// </summary>
+        /// <param name="crewables"></param>
+        /// <param name="construct"></param>
+        private static void FulfillPartRequirements(CrewableList crewables, ShipConstruct construct)
+        {
+            // Find any professions that are required on the ship
+            Dictionary<string, ModuleCrewRequirement> requirements = FindRequiredProfessions(construct);
+            if (requirements.Count == 0) return; // there aren't any requirements
+
+            // We can ignore any that are already provided for
+            List<string> ignoreList = new List<string>();
+            foreach (string requiredProfession in requirements.Keys)
+            {
+                if (HasProfession(crewables.Crewables, requiredProfession)) ignoreList.Add(requiredProfession);
+            }
+            foreach (string ignoreProfession in ignoreList)
+            {
+                requirements.Remove(ignoreProfession);
+            }
+            if (requirements.Count == 0) return; // all requirements already taken care of
+            List<String> prioritizedRequirements = new List<string>(requirements.Keys);
+
+            if (prioritizedRequirements.Count > 1)
+            {
+                // Sort our remaining requirements in descending order of importance
+                Comparison<string> byPriority = (profession1, profession2) =>
+                {
+                    int importance1 = requirements[profession1].importance;
+                    int importance2 = requirements[profession2].importance;
+                    if (importance1 > importance2) return -1;
+                    if (importance2 > importance1) return 1;
+                    importance1 = ProfessionImportance(profession1);
+                    importance2 = ProfessionImportance(profession2);
+                    if (importance1 > importance2) return -1;
+                    if (importance2 > importance1) return 1;
+                    return 0;
+                };
+                prioritizedRequirements.Sort(byPriority);
+            }
+
+            foreach (string requiredProfession in prioritizedRequirements)
+            {
+                String part = Logging.ToString(requirements[requiredProfession].part);
+                ProtoCrewMember highest;
+                ProtoCrewMember lowest;
+                if (FindHighestLowestAvailable(requiredProfession, crewables, out highest, out lowest))
+                {
+                    // Got a crew member to fulfill the requirement.
+                    ProtoCrewMember crew = PILOT_PROFESSION.Equals(requiredProfession) ? lowest : highest;
+                    // Is there a command slot available?
+                    CrewSlot slot = Crewable.FindFirstSlotWhich(crewables.CrewablesWhich(c => c.IsCommand), s => s.IsEmpty);
+                    if (slot == null)
+                    {
+                        // okay then, how about a non-command slot?
+                        slot = Crewable.FindFirstSlotWhich(crewables.Crewables, s => s.IsEmpty);
+                    }
+                    if (slot == null)
+                    {
+                        Logging.Warn("No open slot is available to assign a " + requiredProfession + " to operate " + part);
+                    }
+                    else
+                    {
+                        slot.Occupant = crew;
+                        Logging.Log("Assigning " + Logging.ToString(crew) + " to operate " + part);
+                    }
+                }
+                else
+                {
+                    // there's nobody to fill the slot
+                    Logging.Warn("No " + requiredProfession + " is available to operate " + part + ", not assigning anyone");
+                }
+            } // for each required profession
+        }
+
+        /// <summary>
+        /// Attempt to fill any open slots that have any requirement at all. We'll take any warm body we can get.
+        /// </summary>
+        /// <param name="crewables"></param>
+        /// <param name="alreadyAssigned"></param>
+        private static void AssignAnyKerbals(IEnumerable<Crewable> crewables, CrewableList alreadyAssigned)
+        {
+            foreach (Crewable crewable in crewables)
+            {
+                foreach (CrewSlot slot in crewable.Slots)
+                {
+                    if (slot.Assignment == null) continue; // no assignment for this slot
+                    if (!slot.IsEmpty) continue; // there's already someone there
+
+                    ProtoCrewMember crew = AnyAssignableKerbal(alreadyAssigned);
+                    string message = crewable.ToString() + " slot " + slot.Index + ": ";
+                    if (crew == null)
+                    {
+                        message += "No crew available, skipping";
+                    }
+                    else
+                    {
+                        slot.Occupant = crew;
+                        message += "Assigned " + Logging.ToString(crew);
+                    }
+                    Log(message);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Determines whether the specified profession already has an assigned crewmember.
+        /// </summary>
+        /// <param name="crewables"></param>
+        /// <param name="profession"></param>
+        /// <returns></returns>
+        private static bool HasProfession(IEnumerable<Crewable> crewables, string profession)
+        {
+            foreach (Crewable crewable in crewables)
+            {
+                foreach (CrewSlot slot in crewable.Slots)
+                {
+                    ProtoCrewMember crew = slot.Occupant;
+                    if ((crew != null) && (profession.ToLower().Equals(crew.trait.ToLower())))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private static void LogVesselManifest()
+        {
+            VesselCrewManifest vesselManifest = ShipConstruction.ShipManifest;
+            if (vesselManifest == null)
+            {
+                Log("Vessel manifest is unavailable");
+            }
+            else
+            {
+                List<PartCrewManifest> partManifests = vesselManifest.GetCrewableParts();
+                foreach (PartCrewManifest partManifest in partManifests)
+                {
+                    ProtoCrewMember[] crewMembers = partManifest.GetPartCrew();
+                    for (int index = 0; index < crewMembers.Length; ++index)
+                    {
+                        Log("Crew assigned to " + partManifest.PartInfo.name + " slot " + index + ": " + Logging.ToString(crewMembers[index]));
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the highest SAS level supplied. Returns -1 if no SAS functionality is available.
+        /// </summary>
+        /// <param name="construct"></param>
+        /// <returns></returns>
+        private static int GetHighestSASLevel(ShipConstruct construct)
+        {
+            int highestLevel = -1;
+            foreach (Part part in construct.parts)
+            {
+                foreach (ModuleSAS module in part.Modules.GetModules<ModuleSAS>())
+                {
+                    if (module.SASServiceLevel > highestLevel)
+                    {
+                        highestLevel = module.SASServiceLevel;
+                    }
+                }
+            }
+            return highestLevel;
+        }
+
+        /// <summary>
+        /// Get the highest-level assigned crew member of the specified profession (null if none).
+        /// </summary>
+        /// <param name="crewables"></param>
+        /// <param name="profession"></param>
+        /// <returns></returns>
+        private static ProtoCrewMember GetHighestAssignedLevel(IEnumerable<Crewable> crewables, string profession)
+        {
+            int highestLevel = -1;
+            ProtoCrewMember highest = null;
+            foreach (Crewable crewable in crewables)
+            {
+                foreach (CrewSlot slot in crewable.Slots)
+                {
+                    ProtoCrewMember candidate = slot.Occupant;
+                    if ((candidate != null) && (candidate.experienceLevel > highestLevel))
+                    {
+                        highest = candidate;
+                        highestLevel = candidate.experienceLevel;
+                    }
+                }
+            }
+            return highest;
+        }
+
+        /// <summary>
+        /// Find the first assigned crew member who satisfies the predicate.
+        /// </summary>
+        /// <param name="crewables"></param>
+        /// <param name="predicate"></param>
+        /// <returns></returns>
+        private static List<ProtoCrewMember> FindCrewWhich(IEnumerable<Crewable> crewables, Func<ProtoCrewMember, bool> predicate)
+        {
+            List<ProtoCrewMember> candidates = new List<ProtoCrewMember>();
+            foreach (Crewable crewable in crewables)
+            {
+                foreach (CrewSlot slot in crewable.Slots)
+                {
+                    ProtoCrewMember crew = slot.Occupant;
+                    if (predicate(crew)) candidates.Add(crew);
+                }
+            }
+            return candidates;
+        }
+
+        /// <summary>
+        /// Find the highest and lowest level kerbal of the specified profession that's available for assignment.
+        /// Returns true if found, false if not.
+        /// </summary>
+        private static bool FindHighestLowestAvailable(
+            String profession,
+            CrewableList alreadyAssigned,
+            out ProtoCrewMember highest,
+            out ProtoCrewMember lowest)
+        {
+            highest = null;
+            lowest = null;
+            foreach (ProtoCrewMember candidate in Roster.Crew)
+            {
+                if (IsAssignable(candidate, alreadyAssigned)
+                    && profession.Equals(candidate.trait)
+                    && !alreadyAssigned.IsAssigned(candidate))
+                {
+                    if ((highest == null) || (candidate.experienceLevel > highest.experienceLevel))
+                    {
+                        highest = candidate;
+                    }
+                    if ((lowest == null) || (candidate.experienceLevel > lowest.experienceLevel))
+                    {
+                        lowest = candidate;
+                    }
+                }
+            }
+            return highest != null;
+        }
+
+        /// <summary>
+        /// Find all professions required by parts on the ship. Key is profession name, value is
+        /// the requirement that introduced it.
+        /// </summary>
+        /// <param name="construct"></param>
+        /// <returns></returns>
+        private static Dictionary<string, ModuleCrewRequirement> FindRequiredProfessions(ShipConstruct construct)
+        {
+            Dictionary<string, ModuleCrewRequirement> requirements = new Dictionary<string, ModuleCrewRequirement>();
+            foreach (Part part in construct.parts)
+            {
+                foreach (ModuleCrewRequirement requirement in part.Modules.GetModules<ModuleCrewRequirement>())
+                {
+                    string profession = requirement.profession;
+                    if ((profession == null) || (profession.Length == 0)) continue;
+                    if (requirements.ContainsKey(profession))
+                    {
+                        ModuleCrewRequirement previousRequirement = requirements[profession];
+                        if (requirement.importance > previousRequirement.importance)
+                        {
+                            requirements[profession] = requirement; // it's more important, replace it
+                        }
+                    }
+                    else
+                    {
+                        // first requirement for this profession, add it
+                        requirements[profession] = requirement;
+                    }
+                }
+            }
+            return requirements;
+        }
+
+        /// <summary>
+        /// Looks for an assignable kerbal with the specified name. Returns null if not found
+        /// or unavailable.
+        /// </summary>
+        /// <param name="kerbalName"></param>
+        /// <returns></returns>
+        private static ProtoCrewMember AssignableKerbalByName(string kerbalName, CrewableList alreadyAssigned)
+        {
+            ProtoCrewMember crew = Roster[kerbalName];
+            return IsAssignable(crew, alreadyAssigned) ? crew : null;
+        }
+
+        /// <summary>
+        /// Looks for any kerbal that's available to assign. Returns null if nobody's home.
+        /// </summary>
+        /// <param name="alreadyAssigned"></param>
+        /// <returns></returns>
+        private static ProtoCrewMember AnyAssignableKerbal(CrewableList alreadyAssigned)
+        {
+            foreach (ProtoCrewMember crew in Roster.Crew)
+            {
+                if (IsAssignable(crew, alreadyAssigned)) return crew;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Gets whether the kerbal is available for assignment.
+        /// </summary>
+        /// <param name="crew"></param>
+        /// <returns></returns>
+        private static bool IsAssignable(ProtoCrewMember crew, CrewableList alreadyAssigned)
+        {
+            return (crew != null)
+                && (crew.type == ProtoCrewMember.KerbalType.Crew) // we never want to assign tourists
+                && (crew.rosterStatus == ProtoCrewMember.RosterStatus.Available)
+                && !alreadyAssigned.IsAssigned(crew);
+        }
+
+        private static KerbalRoster Roster {  get { return HighLogic.CurrentGame.CrewRoster; } }
+
+        private static int ProfessionImportance(string profession)
+        {
+            if (ENGINEER_PROFESSION.ToLower().Equals(profession.ToLower())) return 3;
+            if (SCIENTIST_PROFESSION.ToLower().Equals(profession.ToLower())) return 2;
+            if (PILOT_PROFESSION.ToLower().Equals(profession.ToLower())) return 1;
+            return 0;
+        }
+    }
+}
+
+/*
+Some miscellaneous notes to myself.
+
+Crew-related members on Part:
+public int CrewCapacity;
+public bool crewTransferAvailable;
+public List<ProtoCrewMember> protoModuleCrew;
+public bool AddCrewmember(ProtoCrewMember crew);
+public bool AddCrewmemberAt(ProtoCrewMember crew, int seatIndex);
+public void DespawnAllCrew();
+public void RegisterCrew();
+public void RemoveCrewmember(ProtoCrewMember crew);
+public void SpawnCrew();
+public void UnregisterCrew();
+
+Interesting classes:
+PartCrewManifest
+VesselCrewManifest
+ShipConstruction
+ProtoVessel
+
+The only reference to VesselCrewManifest I could find:
+http://forum.kerbalspaceprogram.com/threads/69240-NullReferenceException-Having-a-lot-of-trouble-here?highlight=VesselCrewManifest
+
+For checking available kerbals: I think I use HighLogic.CurrentGame.Roster
+*/
