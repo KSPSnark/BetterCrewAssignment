@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using KSP.UI;
 
 namespace BetterCrewAssignment
 {
@@ -256,7 +257,7 @@ namespace BetterCrewAssignment
                 // the CMAssignmentDialog class to me when I asked about it in the mod development
                 // forum. I never in a thousand years would have found this cryptically-named
                 // class on my own.
-                return (CMAssignmentDialog.Instance == null) ? null : CMAssignmentDialog.Instance.GetManifest();
+                return (CrewAssignmentDialog.Instance == null) ? null : CrewAssignmentDialog.Instance.GetManifest();
             }
         }
 

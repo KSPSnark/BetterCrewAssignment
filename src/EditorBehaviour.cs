@@ -1,4 +1,5 @@
-﻿using System;
+﻿using KSP.UI.Screens;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -26,7 +27,7 @@ namespace BetterCrewAssignment
         /// </summary>
         /// <param name="construct"></param>
         /// <param name="loadType"></param>
-        private void OnShipLoaded(ShipConstruct construct, CraftBrowser.LoadType loadType)
+        private void OnShipLoaded(ShipConstruct construct, CraftBrowserDialog.LoadType loadType)
         {
             try
             {
