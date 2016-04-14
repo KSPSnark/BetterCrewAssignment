@@ -57,6 +57,7 @@
     <Compile Include="ModuleCrewAssignment.cs" />
     <Compile Include="ModuleCrewRequirement.cs" />
     <Compile Include="CrewableList.cs" />
+    <Compile Include="SplashScreen.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

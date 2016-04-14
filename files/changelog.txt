@@ -1,0 +1,14 @@
+Version 1.2  (CURRENT VERSION)
+* Adds ability to have level-specific part requirements.
+* Adds level-appropriate engineer requirements to parachutes, landing legs, and wheels (for repair purposes)
+* Thanks to HebaruSan in the KSP forums for the feature suggestion!
+
+
+Version 1.1  (2016-03-31)
+* Required update to run on KSP version 1.1 or later (older versions of this mod won't work)
+* This and subsequent versions will not run on KSP 1.0.5.
+* No new features; this is a compatibility update only.
+
+
+Version 1.01  (2016-02-16)
+* Works on KSP 1.0.5

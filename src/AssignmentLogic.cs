@@ -160,7 +160,7 @@ namespace BetterCrewAssignment
 
             // Try to find a pilot to assign.
             ProtoCrewMember lowestPilot;
-            if (!FindHighestLowestAvailable(PILOT_PROFESSION, crewables, out highestPilot, out lowestPilot))
+            if (!FindHighestLowestAvailable(PILOT_PROFESSION, 0, crewables, out highestPilot, out lowestPilot))
             {
                 Logging.Warn("SAS will be unavailable (no probe cores, no available pilots)");
                 return maxSas;
@@ -210,7 +210,8 @@ namespace BetterCrewAssignment
             List<string> ignoreList = new List<string>();
             foreach (string requiredProfession in requirements.Keys)
             {
-                if (HasProfession(crewables.All, requiredProfession)) ignoreList.Add(requiredProfession);
+                int requiredLevel = requirements[requiredProfession].minimumLevel;
+                if (HasProfession(crewables.All, requiredProfession, requiredLevel)) ignoreList.Add(requiredProfession);
             }
             foreach (string ignoreProfession in ignoreList)
             {
@@ -234,7 +235,7 @@ namespace BetterCrewAssignment
                     int importance2 = requirements[profession2].importance;
                     if (importance1 > importance2) return -1;
                     if (importance2 > importance1) return 1;
-                    // In case of a ite (e.g. one part asks for a scientist with importance 1
+                    // In case of a tie (e.g. one part asks for a scientist with importance 1
                     // and the other asks for an engineer with importance 1), then pick the
                     // profession that's "better".
                     importance1 = ProfessionImportance(profession1);
@@ -250,10 +251,11 @@ namespace BetterCrewAssignment
             // an empty slot (and available unassigned crew member) to satisfy each one.
             foreach (string requiredProfession in prioritizedRequirements)
             {
-                string part = Logging.ToString(requirements[requiredProfession].part);
+                ModuleCrewRequirement requirement = requirements[requiredProfession];
+                string part = Logging.ToString(requirement.part);
                 ProtoCrewMember highest;
                 ProtoCrewMember lowest;
-                if (FindHighestLowestAvailable(requiredProfession, crewables, out highest, out lowest))
+                if (FindHighestLowestAvailable(requiredProfession, requirement.minimumLevel, crewables, out highest, out lowest))
                 {
                     // Got a crew member to fulfill the requirement. In the case of pilots,
                     // we want the lowest-level possible (to leave the highest freed up to
@@ -269,7 +271,7 @@ namespace BetterCrewAssignment
                     }
                     if (slot == null)
                     {
-                        Logging.Warn("No open slot is available to assign a " + requiredProfession + " to operate " + part);
+                        Logging.Warn("No open slot is available to assign a " + requirement.Description + " to operate " + part);
                     }
                     else
                     {
@@ -280,7 +282,7 @@ namespace BetterCrewAssignment
                 else
                 {
                     // there's nobody to fill the slot
-                    Logging.Warn("No " + requiredProfession + " is available to operate " + part + ", not assigning anyone");
+                    Logging.Warn("No " + requirement.Description + " is available to operate " + part + ", not assigning anyone");
                 }
             } // for each required profession
         }
@@ -312,15 +314,18 @@ namespace BetterCrewAssignment
         /// </summary>
         /// <param name="crewables"></param>
         /// <param name="profession"></param>
+        /// <param name="requiredLevel"></param>
         /// <returns></returns>
-        private static bool HasProfession(IEnumerable<Crewable> crewables, string profession)
+        private static bool HasProfession(IEnumerable<Crewable> crewables, string profession, int requiredLevel)
         {
             foreach (Crewable crewable in crewables)
             {
                 foreach (CrewSlot slot in crewable.Slots)
                 {
                     ProtoCrewMember crew = slot.Occupant;
-                    if ((crew != null) && (profession.ToLower().Equals(crew.trait.ToLower())))
+                    if ((crew != null)
+                        && (profession.ToLower().Equals(crew.trait.ToLower()))
+                        && (crew.experienceLevel >= requiredLevel))
                     {
                         return true;
                     }
@@ -382,7 +387,8 @@ namespace BetterCrewAssignment
         /// Returns true if found, false if not.
         /// </summary>
         private static bool FindHighestLowestAvailable(
-            String profession,
+            string profession,
+            int minimumLevel,
             CrewableList alreadyAssigned,
             out ProtoCrewMember highest,
             out ProtoCrewMember lowest)
@@ -393,6 +399,7 @@ namespace BetterCrewAssignment
             {
                 if (IsAssignable(candidate, alreadyAssigned)
                     && profession.Equals(candidate.trait)
+                    && (candidate.experienceLevel >= minimumLevel)
                     && !alreadyAssigned.IsAssigned(candidate))
                 {
                     if ((highest == null) || (candidate.experience > highest.experience))
@@ -429,6 +436,14 @@ namespace BetterCrewAssignment
                         if (requirement.importance > previousRequirement.importance)
                         {
                             requirements[profession] = requirement; // it's more important, replace it
+                        }
+                        else if (requirement.importance == previousRequirement.importance)
+                        {
+                            if (requirement.minimumLevel > previousRequirement.minimumLevel)
+                            {
+                                // They're equally important, but one of them needs a higher level. Go with the lower one.
+                                requirements[profession] = requirement;
+                            }
                         }
                     }
                     else

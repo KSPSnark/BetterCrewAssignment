@@ -9,7 +9,7 @@ namespace BetterCrewAssignment
     /// </summary>
     static class Logging
     {
-        private static readonly string MODULE_PREFIX = "[Better Crew Assignment] ";
+        private static readonly string MODULE_PREFIX = "[BetterCrewAssignment] ";
 
         public static void Log(object message)
         {

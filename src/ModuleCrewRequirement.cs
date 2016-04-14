@@ -27,6 +27,15 @@ namespace BetterCrewAssignment
         public int importance = 0;
 
         /// <summary>
+        /// The minimum profession level to apply to this requirement. By default it's
+        /// zero, meaning "any kerbal of the required profession will do." If set to something
+        /// higher than that, it means "a kerbal satisfies this requirement only if at or above
+        /// the required level."
+        /// </summary>
+        [KSPField]
+        public int minimumLevel = 0;
+
+        /// <summary>
         /// Gets the crew requirements of the specified part, if any.
         /// </summary>
         /// <param name="part"></param>
@@ -40,9 +49,20 @@ namespace BetterCrewAssignment
         {
             return new StringBuilder()
                 .Append((profession == null) ? "Any" : profession)
+                .Append(minimumLevel)
                 .Append("-")
                 .Append(importance)
                 .ToString();
         }
+
+        public string Description
+        {
+            get
+            {
+                string useProfession = (profession == null) ? "any" : profession;
+                return (minimumLevel > 0) ? ("level " + minimumLevel + " " + useProfession) : useProfession;
+            }
+        }
+
     }
 }
