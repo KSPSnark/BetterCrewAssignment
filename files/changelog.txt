@@ -1,4 +1,7 @@
-Version 1.2  (CURRENT VERSION)
+Version 1.2.1  (CURRENT VERSION)
+* Update to ModuleManager 2.6.24 (required for compatibility with KSP 1.1.2)
+
+Version 1.2  (2016-04-14)
 * Adds ability to have level-specific part requirements.
 * Adds level-appropriate engineer requirements to parachutes, landing legs, and wheels (for repair purposes)
 * Thanks to HebaruSan in the KSP forums for the feature suggestion!
