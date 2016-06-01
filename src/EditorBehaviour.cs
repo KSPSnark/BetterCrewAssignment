@@ -11,15 +11,29 @@ namespace BetterCrewAssignment
     [KSPAddon(KSPAddon.Startup.EditorAny, false)]
     public class EditorBehaviour : MonoBehaviour
     {
-        public void Start()
+        public void Awake()
         {
-            Logging.Log("Start");
             GameEvents.onEditorLoad.Add(OnShipLoaded);
             GameEvents.onEditorShipModified.Add(OnShipModified);
             GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
             CrewPanelMonitor.Started += OnEnterCrewPanel;
             CrewPanelMonitor.Stopped += OnExitCrewPanel;
             CrewPanelMonitor.CrewChanged += OnCrewChanged;
+        }
+
+        public void Start()
+        {
+            Logging.Log("Start");
+        }
+
+        public void OnDestroy()
+        {
+            GameEvents.onEditorLoad.Remove(OnShipLoaded);
+            GameEvents.onEditorShipModified.Remove(OnShipModified);
+            GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
+            CrewPanelMonitor.Started -= OnEnterCrewPanel;
+            CrewPanelMonitor.Stopped -= OnExitCrewPanel;
+            CrewPanelMonitor.CrewChanged -= OnCrewChanged;
         }
 
         /// <summary>

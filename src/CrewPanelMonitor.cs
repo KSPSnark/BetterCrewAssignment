@@ -26,6 +26,12 @@ namespace BetterCrewAssignment
         private DateTime lastUpdate;
         private List<ProtoCrewMember> lastAssignedCrew;
 
+        public void Awake()
+        {
+            GameEvents.onEditorScreenChange.Add(OnEditorScreenChange);
+            GameEvents.onGameSceneSwitchRequested.Add(OnGameSceneSwitch);
+        }
+
         /// <summary>
         /// Start the monitor.
         /// </summary>
@@ -34,8 +40,12 @@ namespace BetterCrewAssignment
             currentScreen = EditorScreen.Parts;
             lastUpdate = DateTime.Now;
             lastAssignedCrew = GetCurrentlyAssignedCrew();
-            GameEvents.onEditorScreenChange.Add(OnEditorScreenChange);
-            GameEvents.onGameSceneSwitchRequested.Add(OnGameSceneSwitch);
+        }
+
+        public void OnDestroy()
+        {
+            GameEvents.onEditorScreenChange.Remove(OnEditorScreenChange);
+            GameEvents.onGameSceneSwitchRequested.Remove(OnGameSceneSwitch);
         }
 
         /// <summary>
