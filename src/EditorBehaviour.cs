@@ -13,6 +13,7 @@ namespace BetterCrewAssignment
     {
         public void Awake()
         {
+            Logging.Log("Registering events");
             GameEvents.onEditorLoad.Add(OnShipLoaded);
             GameEvents.onEditorShipModified.Add(OnShipModified);
             GameEvents.onEditorPartEvent.Add(OnEditorPartEvent);
@@ -28,6 +29,7 @@ namespace BetterCrewAssignment
 
         public void OnDestroy()
         {
+            Logging.Log("Unregistering events");
             GameEvents.onEditorLoad.Remove(OnShipLoaded);
             GameEvents.onEditorShipModified.Remove(OnShipModified);
             GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
