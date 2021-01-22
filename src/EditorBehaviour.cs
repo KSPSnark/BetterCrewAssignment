@@ -11,6 +11,8 @@ namespace BetterCrewAssignment
     [KSPAddon(KSPAddon.Startup.EditorAny, false)]
     public class EditorBehaviour : MonoBehaviour
     {
+        private int partCount;
+
         public void Awake()
         {
             Logging.Log("Registering events");
@@ -25,6 +27,7 @@ namespace BetterCrewAssignment
         public void Start()
         {
             Logging.Log("Start");
+            partCount = -1;
         }
 
         public void OnDestroy()
@@ -48,6 +51,7 @@ namespace BetterCrewAssignment
             try
             {
                 Logging.Log("Ship loaded, " + construct.Count + " parts. ");
+                partCount = construct.Count;
                 LogPreferredAssignments(construct);
                 AssignmentLogic.AssignKerbals(construct);
                 LogVesselManifest();
@@ -66,6 +70,8 @@ namespace BetterCrewAssignment
         {
             try
             {
+                if (construct.Count == partCount) return;
+                partCount = construct.Count;
                 if (Crewable.CanList(construct))
                 {
                     Logging.Log("Ship modified, " + construct.Count + " parts.");
