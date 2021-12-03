@@ -41,7 +41,8 @@ Default choices are controlled by [ModuleManager](http://forum.kerbalspaceprogra
 
 **Requirements** are added to parts that are not themselves crewable, but which need a particular type of kerbal to operate them.  If your vessel has any parts that specify requirements, then the mod will try to ensure that at least one of the specified kerbal type is present in the crew. The default config that comes with the mod adds a "scientist" requirement to all non-rerunnable science experiments (Mystery Goo, Science Jr.), and an "engineer" requirement to ISRU units and ore drills.
 
-###Player choices
+### Player choices
+
 When you load a new ship, or add a new part, then everything is controlled by the default behavior and assignments will be updated dynamically as you switch stuff around on your ship. It can do this because you haven't *observed* the assignments and it's therefore free to shuffle assignments around without invalidating any of your choices.
 
 However, the moment you switch to the "crew" tab in the editor and see what the assignments are, it then nails all the assignments in place.  (It's a [Heisenbergian](https://en.wikipedia.org/wiki/Observer_effect_%28physics%29) sort of thing.)  Basically, what it's doing is assuming that the moment you *see* the assignments, they become your conscious choices rather than something the program assigned.
@@ -49,7 +50,8 @@ However, the moment you switch to the "crew" tab in the editor and see what the 
 Once you see the assignments (and make any changes of your own), those get persisted to the ship, and will be saved when you hit the "save" button.  Such specific choices are assumed to be for a specific kerbal, or for a kerbal of that profession if the kerbal isn't available.
 
 
-##How to customize
+## How to customize
+
 Since all crew assignments/requirements are controlled by [ModuleManager](http://forum.kerbalspaceprogram.com/index.php?/topic/50533-105-module-manager-2613-november-9th-with-more-sha-and-less-bug-upgrade/) config,  you can add your own .cfg file to change the behavior to whatever you like.
 
 If you'd like to customize the behavior, the following references may be helpful:
