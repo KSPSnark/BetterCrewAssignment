@@ -1,4 +1,4 @@
-#BetterCrewAssignment
+# BetterCrewAssignment
 KSP mod to help with crew assignments in the VAB/SPH.
 
  * It makes better automatic default choices for crew assignments (e.g. "labs need scientists" or "drills need engineers").
@@ -6,17 +6,19 @@ KSP mod to help with crew assignments in the VAB/SPH.
  * You can customize the default behavior with ModuleManager config.
 
 
-##How to install
+## How to install 
+
 Unzip into your GameData folder, same as any mod.
 
 
-##How to use
+## How to use
+
 Just play KSP!  The mod is deliberately minimalistic.  It adds no UI, it doesn't require any special actions to use.  It just silently makes the crew-assignment experience better.
 
 The only thing that affects you at all is:  if you go into the "crew" tab of the editor and change crew assignments, then your choices won't be persisted unless you hit the "save" button before launching the ship.  That's it, that's all there is to know.
 
 
-##Cool things it does by default
+## Cool things it does by default
 
 * Make sure there's a pilot on board, if you don't have any SAS-capable probe cores.
 * Staffs science labs with scientists.
@@ -27,10 +29,12 @@ The only thing that affects you at all is:  if you go into the "crew" tab of the
 * If you do manual assignments in the crew tab and then save the ship, it remembers your choices the next time you load the ship.  Empty slots will be left empty.  It will try to assign specific kerbals by name (e.g. "Jeb goes in slot 0 of this command pod"), and if that crewmember is unavailable, will try to assign another kerbal of the same profession (e.g. "I want Jeb, but he's on a mission already, so I'll use this pilot here.")
 
 
-##How it decides
+## How it decides
+
 The mod works with two types of assignments:  default choices, and player choices.
 
-###Default choices
+### Default choices 
+
 Default choices are controlled by [ModuleManager](http://forum.kerbalspaceprogram.com/index.php?/topic/50533-105-module-manager-2613-november-9th-with-more-sha-and-less-bug-upgrade/) config in a file that comes with the mod (see "How to customize", below).  There are two flavors of default choices, *assignments* and *requirements*.
 
 **Assignments** are default choices for crew slots in specific crewable modules.  The default config that comes with the mod assigns scientists to science labs, and all crewmembers to command pods. The default config deliberately leaves passenger cabins empty, though you can tweak this by adding your own config if you like.
